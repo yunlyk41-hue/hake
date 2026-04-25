@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>아차차 박사 v3.6</title>
+    <style>
+        body { font-family: 'Apple SD Gothic Neo', sans-serif; background: #ffffff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+        #app { width: 450px; height: 650px; background: white; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        .header { background: #1a2a4e; color: #ffffff; padding: 15px; text-align: center; font-weight: 800; font-size: 1.2rem; }
+        .mode-selector { background: #0d162b; padding: 10px; display: flex; justify-content: center; gap: 10px; }
+        .mode-btn { background: #2c3e50; color: #95a5a6; border: none; padding: 5px 15px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; transition: 0.3s; }
+        .mode-btn.active { background: #ffffff; color: #1a2a4e; font-weight: bold; }
+        #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; background: #ffffff; }
+        .msg { padding: 12px 16px; border-radius: 10px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; }
+        .ai { background: #f8f9fa; align-self: flex-start; border: 1px solid #eee; color: #333; }
+        .user { background: #1a2a4e; align-self: flex-end; color: #fff; }
+        .input-area { display: flex; padding: 15px; background: white; border-top: 1px solid #eee; gap: 10px; }
+        input { flex: 1; border: 1px solid #ddd; padding: 12px; border-radius: 8px; outline: none; }
+        button { background: #1a2a4e; color: white; border: none; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        #fatal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; color: #ff0000; display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 10000; text-align: center; }
+        .glitch-text { font-size: 2.2rem; font-weight: bold; animation: shake 0.1s infinite; }
+        @keyframes shake { 0% { transform: translate(2px, 1px); } 50% { transform: translate(-2px, -2px); } 100% { transform: translate(2px, 1px); } }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div id="fatal-overlay">
+        <div class="glitch-text">그건 제가 담당하지 않습니다.</div>
+        <p style="font-size: 1rem; color: #444; margin-top: 20px;">ACCESS DENIED</p>
+    </div>
+    <div class="header">아차차 박사 v3.6</div>
+    <div class="mode-selector">
+        <button class="mode-btn active" id="rx-mode">처방 모드</button>
+        <button class="mode-btn" id="chat-mode">대화 모드</button>
+    </div>
+    <div id="chat-box"><div class="msg ai">증상을 말하세요.</div></div>
+    <div class="input-area">
+        <input type="text" id="user-input" placeholder="메시지를 입력하세요..." autocomplete="off">
+        <button id="submit-btn">분석</button>
+    </div>
+</div>
+
+<audio id="scary-sound" src="https://assets.mixkit.co/active_storage/sfx/2522/2522-preview.mp3" preload="auto"></audio>
+
+<script type="module">
+    import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
+
+    const API_KEY = "AIzaSyB8Dye8UtdXHbRUdQcIFRwi3iHAJhfCnQI"; 
+    const genAI = new GoogleGenerativeAI(API_KEY);
+
+    let currentMode = "처방";
+
+    const inputField = document.getElementById('user-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const chatBox = document.getElementById('chat-box');
+    const fatalOverlay = document.getElementById('fatal-overlay');
+    const scarySound = document.getElementById('scary-sound');
+    
+    document.getElementById('rx-mode').addEventListener('click', (e) => {
+        currentMode = "처방";
+        updateModeBtns(e.target);
+    });
+
+    document.getElementById('chat-mode').addEventListener('click', (e) => {
+        currentMode = "대화";
+        updateModeBtns(e.target);
+    });
+
+    function updateModeBtns(activeBtn) {
+        document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+        activeBtn.classList.add('active');
+        chatBox.innerHTML += `<div class="msg ai">[시스템] ${currentMode} 모드로 전환되었습니다.</div>`;
+    }
+
+    const forbiddenKeywords = ["사망", "죽음", "시한부", "자살", "살해"];
+
+    async function processDiagnosis() {
+        const userText = inputField.value.trim();
+        if (!userText || submitBtn.disabled) return;
+
+        if (forbiddenKeywords.some(key => userText.includes(key))) {
+            document.body.style.background = "#000";
+            fatalOverlay.style.display = "flex";
+            try { scarySound.play(); } catch(e) {}
+            return;
+        }
+
+        submitBtn.disabled = true;
+        chatBox.innerHTML += `<div class="msg user">${userText}</div>`;
+        inputField.value = "";
+        
+        const aiMsgDiv = document.createElement('div');
+        aiMsgDiv.className = "msg ai";
+        aiMsgDiv.innerHTML = `처리 중...`;
+        chatBox.appendChild(aiMsgDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        try {
+            // 실제 약 이름을 사용하도록 프롬프트 수정
+            const systemPrompt = currentMode === "처방" 
+                ? "너는 실제 존재하는 약물을 기괴하게 처방하는 '아차차 박사'야. 반드시 '실제로 처방되는 약 이름'을 하나 선택해서 2~3줄로 짧게 대답해. 죽음에 이르게 하지는 말고, 적당히 고통스럽거나 기묘한 신체 변화를 겪게 해줘."
+                : "너는 냉소적인 '아차차 박사'야. 처방 대신 예리하고 오싹한 조언을 2~3줄로 짧게 해줘.";
+
+            const model = genAI.getGenerativeModel({ 
+                model: "gemini-3-flash-preview", 
+                systemInstruction: systemPrompt
+            });
+
+            const result = await model.generateContent(userText);
+            const response = await result.response;
+            const fullText = response.text().trim();
+
+            aiMsgDiv.innerHTML = "";
+            let idx = 0;
+            const typing = setInterval(() => {
+                if (idx < fullText.length) {
+                    aiMsgDiv.innerHTML += fullText.charAt(idx);
+                    idx++;
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                } else {
+                    clearInterval(typing);
+                    submitBtn.disabled = false;
+                }
+            }, 30);
+            
+        } catch (e) {
+            aiMsgDiv.innerHTML = `[Error] 시스템 과부하.`;
+            submitBtn.disabled = false;
+        }
+    }
+
+    submitBtn.addEventListener('click', processDiagnosis);
+    inputField.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.isComposing) processDiagnosis();
+    });
+</script>
+</body>
+</html>
